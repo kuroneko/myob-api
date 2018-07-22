@@ -8,6 +8,24 @@ module Myob
 
       attr_reader :current_company_file, :client, :current_company_file_url
 
+      # MYOB AccountRight API Client
+      #
+      # @param [Hash] options options to create the client with
+      #   * :redirect_uri (String)
+      #   * :consumer (Hash) API Consumer Key/Secret Tokens
+      #     * :key (String) Consumer Key
+      #     * :secret (String) Consumer Secret
+      #   * :access_token (String) The OAuth Access token to use when connecting to AccountRight Live.
+      #   * :refresh_token (String) The OAuth Refresh token to use when connecting to AccountRight Live.
+      #   * :company_file (Hash) Details of the company file to connect to by default
+      #     * :id (String) ID of the company file to connect to
+      #     * :name (String) Name of the company file to connect to
+      #     * :username (String) MYOB Username to use with the company file
+      #     * :password (String) MYOB Password to use with the compahy file
+      #   * :server_url (String) Base URL to a local AccountRight Server
+      #
+      # if :server_url is provided, then OAuth2 is disabled as suitable for use
+      # with a local AccountRight server.
       def initialize(options)
         Myob::Api::Model::Base.subclasses.each {|c| model(c.name.split("::").last)}
 
@@ -16,12 +34,17 @@ module Myob
         @access_token         = options[:access_token]
         @refresh_token        = options[:refresh_token]
 
-        @client               = OAuth2::Client.new(@consumer[:key], @consumer[:secret], {
-          :site          => 'https://secure.myob.com',
-          :authorize_url => '/oauth2/account/authorize',
-          :token_url     => '/oauth2/v1/authorize',
-        })
-
+        if options[:server_url]
+          @client = Faraday.new()
+          @skip_oauth = true
+        else
+          @client               = OAuth2::Client.new(@consumer[:key], @consumer[:secret], {
+            :site          => 'https://secure.myob.com',
+            :authorize_url => '/oauth2/account/authorize',
+            :token_url     => '/oauth2/v1/authorize',
+          })
+          @skip_oauth = false
+        end
         # on client init, if we have a company file already, get the appropriate base URL for this company file from MYOB
         provided_company_file = options[:selected_company_file] || options[:company_file]
         select_company_file(provided_company_file) if provided_company_file
@@ -41,22 +64,19 @@ module Myob
       end
 
       def headers
+        headerRet = {
+          'x-myobapi-version' => 'v2',
+          'Content-Type'      => 'application/json'
+        }
         token = (@current_company_file || {})[:token]
-        if token.nil? || token == ''
-          # if token is blank assume we are using federated login - http://myobapi.tumblr.com/post/109848079164/2015-1-release-notes
-          {
-            'x-myobapi-key'     => @consumer[:key],
-            'x-myobapi-version' => 'v2',
-            'Content-Type'      => 'application/json'
-          }
-        else
-          {
-            'x-myobapi-key'     => @consumer[:key],
-            'x-myobapi-version' => 'v2',
-            'x-myobapi-cftoken' => token,
-            'Content-Type'      => 'application/json'
-          }
+        unless token.nil? || token.empty?
+          headerRet['x-myobapi-cftoken'] = token
         end
+        key = (@consumer || {})[:key]
+        unless key.nil? || key.empty?
+          headerRet['x-myobapi-key'] = key
+        end
+        headerRet
       end
 
       # given some company file credentials, connect to MYOB and get the appropriate company file object.
@@ -96,12 +116,16 @@ module Myob
       end
 
       def connection
-        if @refresh_token
-          @auth_connection ||= OAuth2::AccessToken.new(@client, @access_token, {
-            :refresh_token => @refresh_token
-          }).refresh!
+        if @skip_oauth
+          @client
         else
-          @auth_connection ||= OAuth2::AccessToken.new(@client, @access_token)
+          if @refresh_token
+            @auth_connection ||= OAuth2::AccessToken.new(@client, @access_token, {
+              :refresh_token => @refresh_token
+            }).refresh!
+          else
+            @auth_connection ||= OAuth2::AccessToken.new(@client, @access_token)
+          end
         end
       end
 

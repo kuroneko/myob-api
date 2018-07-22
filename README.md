@@ -1,6 +1,6 @@
 # MYOB Api
 
-[MYOB Api](https://github.com/davidlumley/myob-api) is an interface for accessing [MYOB](http://developer.myob.com/api/accountright/v2/)'s  AccountRight Live API.
+[MYOB Api](https://github.com/davidlumley/myob-api) is an interface for accessing [MYOB's AccountRight Live API](http://developer.myob.com/api/accountright/v2/).
 
 ## Installation
 
