@@ -1,9 +1,9 @@
+require 'objspace'
+
 module Myob
   module Api
     module Model
       class Base
-
-        API_URL = 'https://api.myob.com/accountright/' # deprecated except for initial requests - should read from API instead - http://myobapi.tumblr.com/post/141169146113/important-update-accountright-live-cloud-api
         QUERY_OPTIONS = [:orderby, :top, :skip, :filter]
 
         def initialize(client, model_name)
@@ -61,12 +61,12 @@ module Myob
 
         def url(object = nil, params = nil)
           url = if self.model_route == ''
-            API_URL
+            @client.api_url
           else
             if @client && @client.current_company_file_url
               "#{@client.current_company_file_url}/#{self.model_route}#{"/#{object['UID']}" if object && object['UID']}"
             else
-              "#{API_URL}#{@client.current_company_file[:id]}/#{self.model_route}#{"/#{object['UID']}" if object && object['UID']}"
+              "#{@client.api_url}#{@client.current_company_file[:id]}/#{self.model_route}#{"/#{object['UID']}" if object && object['UID']}"
             end
           end
 
@@ -80,6 +80,27 @@ module Myob
 
         def new_record?(object)
           object["UID"].nil? || object["UID"] == ""
+        end
+
+        # copied from active_support so we don't need to pull in all of
+        # active_support just to use the MYOB API.
+        def self.descendants
+          descendants = []
+          ObjectSpace.each_object(singleton_class) do |k|
+            next if k.singleton_class?
+            descendants.unshift k unless k == self
+          end
+          descendants
+        end
+
+        # copied from active_support so we don't need to pull in all of
+        # active_support just to use the MYOB API.
+        def self.subclasses
+          subclasses, chain = [], descendants
+          chain.each do |k|
+            subclasses << k unless chain.any? { |c| c > k }
+          end
+          subclasses
         end
 
         private
@@ -113,7 +134,7 @@ module Myob
           if @client && @client.current_company_file_url
             "#{@client.current_company_file_url}/#{self.model_route}"
           else
-            "#{API_URL}#{@client.current_company_file[:id]}/#{self.model_route}"
+            "#{@client.api_url}#{@client.current_company_file[:id]}/#{self.model_route}"
           end
         end
         

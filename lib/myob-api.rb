@@ -32,4 +32,6 @@ require 'myob/api/models/general_ledger'
 
 require 'myob/api/models/employee_payroll_advice'
 
+require 'myob/api/http/local_connection'
+
 require 'myob/api/client'

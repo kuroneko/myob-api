@@ -8,6 +8,8 @@ module Myob
 
       attr_reader :current_company_file, :client, :current_company_file_url
 
+      DEFAULT_API_URL = 'https://api.myob.com/accountright/'
+
       # MYOB AccountRight API Client
       #
       # @param [Hash] options options to create the client with
@@ -33,9 +35,10 @@ module Myob
         @consumer             = options[:consumer]
         @access_token         = options[:access_token]
         @refresh_token        = options[:refresh_token]
+        @api_url              = options[:server_url]
 
-        if options[:server_url]
-          @client = Faraday.new()
+        if @api_url
+          @client = Faraday.new(url: api_url)
           @skip_oauth = true
         else
           @client               = OAuth2::Client.new(@consumer[:key], @consumer[:secret], {
@@ -49,6 +52,10 @@ module Myob
         provided_company_file = options[:selected_company_file] || options[:company_file]
         select_company_file(provided_company_file) if provided_company_file
         @current_company_file ||= {}
+      end
+
+      def api_url
+        @api_url || DEFAULT_API_URL
       end
 
       def get_access_code_url(params = {})
@@ -103,7 +110,7 @@ module Myob
           token = company_file[:token]
           if (token.nil? || token == '') && !company_file[:username].nil? && company_file[:username] != '' && !company_file[:password].nil?
             # if we have been given login details, encode them into a token
-            token = Base64.encode64("#{company_file[:username]}:#{company_file[:password]}")
+            token = Base64.encode64("#{company_file[:username]}:#{company_file[:password]}").chomp
           end
           @current_company_file = {
             :id    => selected_company_file['Id'],
@@ -117,7 +124,7 @@ module Myob
 
       def connection
         if @skip_oauth
-          @client
+          @local_connection ||= Myob::Api::Http::LocalConnection.new(url: api_url)
         else
           if @refresh_token
             @auth_connection ||= OAuth2::AccessToken.new(@client, @access_token, {
