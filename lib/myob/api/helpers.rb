@@ -16,6 +16,9 @@ module Myob
     module Helpers
       using RefinedString
 
+      # @api private
+      #
+      # Construct an accessors for the named model class
       def model(model_name)
         method_name = model_name.to_s.underscore
         variable_name = "@#{method_name}_model".to_sym

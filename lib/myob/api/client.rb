@@ -3,42 +3,55 @@ require 'oauth2'
 
 module Myob
   module Api
+    # Myob::Api::Client provides an interface to query data from MYOB
+    # AccountRight Live or an MYOB AccountRight API server instance.
+    #
+    # Data can be fetched using the {Myob::Api::Model::Base} subclasses, each of
+    # which has a accessor underneath this class which can be used to get or
+    # send updates to the API.  These are automatically mapped using the
+    # underscored versions of the last segment of their class names.
+    # (ie:  {Myob::Api::Model::CompanyFile} becomes +#company_file+)
     class Client
       include Myob::Api::Helpers
 
-      attr_reader :current_company_file, :client, :current_company_file_url
+      # @return [Hash] Returns options for the current company file as set/interpreted by {#select_company_file}
+      attr_reader :current_company_file
+
+      # @api private
+      # @return the internal client used to access the API
+      attr_reader :client
+
+      # @return [String] The base URI for the bound company file, if set by {#select_company_file}, +nil+ otherwise
+      attr_reader :current_company_file_url
 
       DEFAULT_API_URL = 'https://api.myob.com/accountright/'
 
-      # MYOB AccountRight API Client
+      # Initialize a new instance of a API Client.
       #
-      # @param [Hash] options options to create the client with
-      #   * :redirect_uri (String)
-      #   * :consumer (Hash) API Consumer Key/Secret Tokens
-      #     * :key (String) Consumer Key
-      #     * :secret (String) Consumer Secret
-      #   * :access_token (String) The OAuth Access token to use when connecting to AccountRight Live.
-      #   * :refresh_token (String) The OAuth Refresh token to use when connecting to AccountRight Live.
-      #   * :company_file (Hash) Details of the company file to connect to by default
-      #     * :id (String) ID of the company file to connect to
-      #     * :name (String) Name of the company file to connect to
-      #     * :username (String) MYOB Username to use with the company file
-      #     * :password (String) MYOB Password to use with the compahy file
-      #   * :server_url (String) Base URL to a local AccountRight Server
+      # if +:server_url+ is provided, then OAuth2 is disabled as suitable for
+      # use with a local AccountRight API server.
       #
-      # if :server_url is provided, then OAuth2 is disabled as suitable for use
-      # with a local AccountRight server.
+      # @option options [String] redirect_uri
+      # @option options [String] consumer_key MYOB AccountRight Live Consumer Key
+      # @option options [String] consumer_secret MYOB AccountRight Live Consumer Secret
+      # @option options [String] access_token OAuth2 Access Token
+      # @option options [String] refresh_token OAuth2 Refresh Token
+      # @option options [Hash] company_file Details of the default company file to open.  Same options as used by {#select_company_file}.
+      # @option options [String] server_url Base URL for an AccountRight API Server (not AccountRight Live) #
       def initialize(options)
         Myob::Api::Model::Base.subclasses.each {|c| model(c.name.split("::").last)}
 
         @redirect_uri         = options[:redirect_uri]
-        @consumer             = options[:consumer]
+        @consumer             = {
+          key:    options[:consumer_key] || nil,
+          secret: options[:consumer_secret] || nil,
+        }
         @access_token         = options[:access_token]
         @refresh_token        = options[:refresh_token]
         @api_url              = options[:server_url]
 
         if @api_url
-          @client = Faraday.new(url: api_url)
+          @client = nil
           @skip_oauth = true
         else
           @client               = OAuth2::Client.new(@consumer[:key], @consumer[:secret], {
@@ -54,6 +67,11 @@ module Myob
         @current_company_file ||= {}
       end
 
+      # returns the configured Base URL.  (Only used for Company File lookups,
+      # as the results from that lookup contains the full base URI for the
+      # company_file)
+      #
+      # @return [String] The Base URL for the service (typically the company file endpoint)
       def api_url
         @api_url || DEFAULT_API_URL
       end
@@ -70,6 +88,9 @@ module Myob
         @token
       end
 
+      # Returns the set of headers to use on a request to this API server.
+      #
+      # @api private
       def headers
         headerRet = {
           'x-myobapi-version' => 'v2',
@@ -89,10 +110,19 @@ module Myob
       # given some company file credentials, connect to MYOB and get the appropriate company file object.
       # store its ID and token for auth'ing requests, and its URL to ensure we talk to the right MYOB server.
       #
-      # `company_file` should be hash. accepted forms:
+      # A valid specification should contain both of:
+      # * Either a correctly encoded authentication token, or a username and password pair.
+      # * Either the company file name, or its ID.
       #
-      # {name: String, username: String, password: String}
-      # {id: String, token: String}
+      # A list of known company files can be obtained using {Model::CompanyFile}
+      #
+      # @option company_file [String] name A complete company file name to match against
+      # @option company_file [String] id A company file GUID to match against
+      # @option company_file [String] username The user to access the company file as
+      # @option company_file [String] password The password to access the company file with
+      # @option company_file [String] token An pre-encoded authentication token as used by the AccountRight API
+      #
+      # @return [void]
       def select_company_file(company_file)
         # store the provided company file as an ivar so we can use it for subsequent requests
         # we need the token from it to make the initial request to get company files
@@ -122,6 +152,9 @@ module Myob
         end
       end
 
+      # @return [Http::LocalConnection,OAuth2::Client] Gets a connection object
+      #   to talk to the API.
+      # @api private
       def connection
         if @skip_oauth
           @local_connection ||= Myob::Api::Http::LocalConnection.new(url: api_url)

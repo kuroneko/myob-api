@@ -1,5 +1,5 @@
 module Myob
   module Api
-    VERSION = "0.10.3"
+    VERSION = "1.0.0"
   end
 end

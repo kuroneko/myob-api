@@ -12,6 +12,10 @@ module Myob
           @next_page_link  = nil
         end
 
+        # model_route returns the path of the object it represents below the
+        # CompanyFile ID.
+        #
+        # i.e: Customer maps to 'Contact/Customer'
         def model_route
           @model_name.to_s
         end
