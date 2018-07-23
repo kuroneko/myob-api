@@ -35,6 +35,12 @@ module Myob
           end
         end
 
+        def delete(url, options)
+          @client.delete(url) do |req|
+            setup_request(req, options)
+          end
+        end
+
         private
         def setup_request(req, options)
           req.headers.merge!(options[:headers]) if options[:headers]

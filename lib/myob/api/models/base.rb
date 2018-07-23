@@ -3,6 +3,18 @@ require 'objspace'
 module Myob
   module Api
     module Model
+      # Base provides the fundamental behaviour required to query AccountRight
+      # for a specific type of data.
+      #
+      # In general, objects that return paginated data will return a hash with
+      # element +"Items"+ which contains the array of objects returned.
+      #
+      # The objects themselves are simply the hashified JSON objects returned
+      # by the API - they are not wrapped in this class.
+      #
+      # @abstract Subclass and implement {#model_route} to implement a new MYOB
+      #   AccountRight API object type, then require the class in +myob-api.rb+
+      #   before +myob/api/client+ is required.
       class Base
         QUERY_OPTIONS = [:orderby, :top, :skip, :filter]
 
@@ -16,24 +28,43 @@ module Myob
         # CompanyFile ID.
         #
         # i.e: Customer maps to 'Contact/Customer'
+        #
+        # @return string
         def model_route
           @model_name.to_s
         end
 
+        # Queries the API for the first page of objects.
+        #
+        # Once called, {#next_page?} can be used to verify if there are further
+        # pages of objects to retrieve, and {#next_page} can be used to retrieve
+        # that next page.
+        #
+        # @return [Hash] A hash containing the data (see the Class description)
         def all(params = nil)
           perform_request(self.url(nil, params))
         end
         alias_method :get, :all
 
+        # Queries the API ala {#all}, but unwraps down to the +"Items"+ element
+        # if it is present
+        #
+        # @note This method seems ill-conceived and probably shouldn't be used.
+        #
+        # @return [Object] Either the JSON object returned, or the object or array in the +"Items"+ slot if JSON object had one.
         def records(params = nil)
           response = all(params)
           response.is_a?(Hash) && response.key?('Items') ? response['Items'] : response
         end
-        
+
+        # @return [boolean] +true+ if the last query indicated there were more objects to load, +false+ otherwise
         def next_page?
           !!@next_page_link
         end
-        
+
+        # Returns the next page of data from the last fetch performed.
+        #
+        # @return [Hash] A hash containing the data (see the Class description)
         def next_page(params = nil)
           perform_request(@next_page_link)
         end
@@ -55,6 +86,10 @@ module Myob
           all(params).first
         end
 
+        # Save the object provided to AccountRight, either creating if it is new,
+        # or updating it otherwise.
+        #
+        # @param object [Hash] The AccountRight Object to save
         def save(object)
           new_record?(object) ? create(object) : update(object)
         end
@@ -82,12 +117,18 @@ module Myob
           url
         end
 
+        # This method checks to see if the object has been previously persisted.
+        #
+        # @param object [Hash] The AccountRight Object to check
+        # @return [boolean] true if the object is new, false if the object has been previously saved
         def new_record?(object)
           object["UID"].nil? || object["UID"] == ""
         end
 
-        # copied from active_support so we don't need to pull in all of
-        # active_support just to use the MYOB API.
+        # @private
+        # @api private
+        # @note copied from active_support so we don't need to pull in all of
+        #   active_support just to use the MYOB API.
         def self.descendants
           descendants = []
           ObjectSpace.each_object(singleton_class) do |k|
@@ -97,8 +138,10 @@ module Myob
           descendants
         end
 
-        # copied from active_support so we don't need to pull in all of
-        # active_support just to use the MYOB API.
+        # @private
+        # @api private
+        # @note copied from active_support so we don't need to pull in all of
+        #   active_support just to use the MYOB API.
         def self.subclasses
           subclasses, chain = [], descendants
           chain.each do |k|
